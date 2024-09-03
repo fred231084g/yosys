@@ -153,7 +153,7 @@ ifeq ($(OS), Haiku)
 CXXFLAGS += -D_DEFAULT_SOURCE
 endif
 
-YOSYS_VER := 0.44+0
+YOSYS_VER := 0.45+0
 
 # Note: We arrange for .gitcommit to contain the (short) commit hash in
 # tarballs generated with git-archive(1) using .gitattributes. The git repo
@@ -169,7 +169,7 @@ endif
 OBJS = kernel/version_$(GIT_REV).o
 
 bumpversion:
-	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 80ba43d.. | wc -l`/;" Makefile
+	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 9ed031d.. | wc -l`/;" Makefile
 
 ABCMKARGS = CC="$(CXX)" CXX="$(CXX)" ABC_USE_LIBSTDCXX=1 ABC_USE_NAMESPACE=abc VERBOSE=$(Q)
 
@@ -807,7 +807,7 @@ check-git-abc:
 		exit 1; \
 	fi
 
-abc/abc$(EXE) abc/libabc.a: check-git-abc
+abc/abc$(EXE) abc/libabc.a: | check-git-abc
 	$(P)
 	$(Q) mkdir -p abc && $(MAKE) -C $(PROGRAM_PREFIX)abc -f "$(realpath $(YOSYS_SRC)/abc/Makefile)" ABCSRC="$(realpath $(YOSYS_SRC)/abc/)" $(S) $(ABCMKARGS) $(if $(filter %.a,$@),PROG="abc",PROG="abc$(EXE)") MSG_PREFIX="$(eval P_OFFSET = 5)$(call P_SHOW)$(eval P_OFFSET = 10) ABC: " $(if $(filter %.a,$@),libabc.a)
 
@@ -877,6 +877,7 @@ endif
 	+cd tests/arch/anlogic && bash run-test.sh $(SEEDOPT)
 	+cd tests/arch/gowin && bash run-test.sh $(SEEDOPT)
 	+cd tests/arch/intel_alm && bash run-test.sh $(SEEDOPT)
+	+cd tests/arch/nanoxplore && bash run-test.sh $(SEEDOPT)
 	+cd tests/arch/nexus && bash run-test.sh $(SEEDOPT)
 	+cd tests/arch/quicklogic/pp3 && bash run-test.sh $(SEEDOPT)
 	+cd tests/arch/quicklogic/qlf_k6n10f && bash run-test.sh $(SEEDOPT)
@@ -984,8 +985,8 @@ docs/guidelines docs/source/generated:
 
 # some commands return an error and print the usage text to stderr
 define DOC_USAGE_STDERR
-docs/source/generated/$(1): $(PROGRAM_PREFIX)$(1) docs/source/generated
-	-$(Q) ./$$< --help 2> $$@
+docs/source/generated/$(1): $(TARGETS) docs/source/generated
+	-$(Q) ./$(PROGRAM_PREFIX)$(1) --help 2> $$@
 endef
 DOCS_USAGE_STDERR := yosys-config yosys-filterlib
 
@@ -998,8 +999,8 @@ $(foreach usage,$(DOCS_USAGE_STDERR),$(eval $(call DOC_USAGE_STDERR,$(usage))))
 
 # others print to stdout
 define DOC_USAGE_STDOUT
-docs/source/generated/$(1): $(PROGRAM_PREFIX)$(1) docs/source/generated
-	$(Q) ./$$< --help > $$@
+docs/source/generated/$(1): $(TARGETS) docs/source/generated
+	$(Q) ./$(PROGRAM_PREFIX)$(1) --help > $$@
 endef
 DOCS_USAGE_STDOUT := yosys yosys-smtbmc yosys-witness
 $(foreach usage,$(DOCS_USAGE_STDOUT),$(eval $(call DOC_USAGE_STDOUT,$(usage))))
@@ -1009,8 +1010,11 @@ docs/usage: $(addprefix docs/source/generated/,$(DOCS_USAGE_STDOUT) $(DOCS_USAGE
 docs/reqs:
 	$(Q) $(MAKE) -C docs reqs
 
+.PHONY: docs/prep
+docs/prep: docs/source/cmd/abc.rst docs/gen_examples docs/gen_images docs/guidelines docs/usage
+
 DOC_TARGET ?= html
-docs: docs/source/cmd/abc.rst docs/gen_examples docs/gen_images docs/guidelines docs/usage docs/reqs
+docs: docs/prep
 	$(Q) $(MAKE) -C docs $(DOC_TARGET)
 
 clean:
