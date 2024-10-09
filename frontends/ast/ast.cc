@@ -41,6 +41,8 @@ namespace AST {
 	std::string current_filename;
 	void (*set_line_num)(int) = NULL;
 	int (*get_line_num)() = NULL;
+	unsigned long long astnodes = 0;
+	unsigned long long astnode_count() { return astnodes; }
 }
 
 // instantiate global variables (private API)
@@ -204,6 +206,7 @@ AstNode::AstNode(AstNodeType type, AstNode *child1, AstNode *child2, AstNode *ch
 	static unsigned int hashidx_count = 123456789;
 	hashidx_count = mkhash_xorshift(hashidx_count);
 	hashidx_ = hashidx_count;
+	astnodes++;
 
 	this->type = type;
 	filename = current_filename;
@@ -292,6 +295,7 @@ void AstNode::delete_children()
 // AstNode destructor
 AstNode::~AstNode()
 {
+	astnodes--;
 	delete_children();
 }
 
@@ -472,6 +476,10 @@ void AstNode::dumpVlog(FILE *f, std::string indent) const
 		}
 		fprintf(f, " %s", id2vl(str).c_str());
 		fprintf(f, ";\n");
+		break;
+
+	case AST_WIRETYPE:
+		fprintf(f, "%s", id2vl(str).c_str());
 		break;
 
 	case AST_MEMORY:
@@ -690,7 +698,17 @@ void AstNode::dumpVlog(FILE *f, std::string indent) const
 		break;
 
 	case AST_CAST_SIZE:
-		children[0]->dumpVlog(f, "");
+		switch (children[0]->type)
+		{
+		case AST_WIRE:
+			if (children[0]->children.size() > 0)
+				children[0]->children[0]->dumpVlog(f, "");
+			else
+				fprintf(f, "%d'", children[0]->range_left - children[0]->range_right + 1);
+			break;
+		default:
+			children[0]->dumpVlog(f, "");
+		}
 		fprintf(f, "'(");
 		children[1]->dumpVlog(f, "");
 		fprintf(f, ")");
