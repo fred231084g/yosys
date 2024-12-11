@@ -612,7 +612,7 @@ std::string escape_c_string(const std::string &input)
 	output.push_back('"');
 	for (auto c : input) {
 		if (::isprint(c)) {
-			if (c == '\\')
+			if (c == '\\' || c == '"')
 				output.push_back('\\');
 			output.push_back(c);
 		} else {
@@ -2497,7 +2497,7 @@ struct CxxrtlWorker {
 							// Alias of a member wire
 							const RTLIL::Wire *aliasee = debug_wire_type.sig_subst.as_wire();
 							f << indent << "items->add(path, " << escape_cxx_string(get_hdl_name(wire)) << ", ";
-							dump_debug_attrs(aliasee);
+							dump_debug_attrs(wire);
 							f << ", ";
 							// If the aliasee is an outline, then the alias must be an outline, too; otherwise downstream
 							// tooling has no way to find out about the outline.

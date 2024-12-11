@@ -50,3 +50,6 @@ OBJS += passes/cmds/dft_tag.o
 OBJS += passes/cmds/future.o
 OBJS += passes/cmds/box_derive.o
 OBJS += passes/cmds/example_dt.o
+OBJS += passes/cmds/portarcs.o
+OBJS += passes/cmds/wrapcell.o
+OBJS += passes/cmds/setenv.o
