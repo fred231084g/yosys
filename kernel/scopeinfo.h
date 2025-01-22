@@ -169,8 +169,11 @@ public:
 			return !(*this == other);
 		}
 
-		int hash() const {
-			return mkhash(scope_name.hash(), hash_ptr_ops::hash(target));
+		[[nodiscard]] Hasher hash_into(Hasher h) const
+		{
+			h.eat(scope_name);
+			h.eat(target);
+			return h;
 		}
 
 		bool valid() const {
@@ -322,7 +325,7 @@ struct ModuleItem {
 	Cell *cell() const { return type == Type::Cell ? static_cast<Cell *>(ptr) : nullptr; }
 
 	bool operator==(const ModuleItem &other) const { return ptr == other.ptr && type == other.type; }
-	unsigned int hash() const { return (uintptr_t)ptr; }
+	[[nodiscard]] Hasher hash_into(Hasher h) const { h.eat(ptr); return h; }
 };
 
 static inline void log_dump_val_worker(typename IdTree<ModuleItem>::Cursor cursor ) { log("%p %s", cursor.target, log_id(cursor.scope_name)); }
@@ -334,12 +337,14 @@ template<typename O>
 std::vector<IdString> parse_hdlname(const O* object)
 {
 	std::vector<IdString> path;
-	if (!object->name.isPublic())
-		return path;
 	for (auto const &item : object->get_hdlname_attribute())
 		path.push_back("\\" + item);
-	if (path.empty())
+	if (path.empty() && object->name.isPublic())
 		path.push_back(object->name);
+	if (!path.empty() && !(object->name.isPublic() || object->name.begins_with("$paramod") || object->name.begins_with("$abstract"))) {
+		path.pop_back();
+		path.push_back(object->name);
+	}
 	return path;
 }
 
@@ -348,17 +353,22 @@ std::pair<std::vector<IdString>, IdString> parse_scopename(const O* object)
 {
 	std::vector<IdString> path;
 	IdString trailing = object->name;
-	if (object->name.isPublic()) {
+	if (object->name.isPublic() || object->name.begins_with("$paramod") || object->name.begins_with("$abstract")) {
 		for (auto const &item : object->get_hdlname_attribute())
 			path.push_back("\\" + item);
 		if (!path.empty()) {
 			trailing = path.back();
 			path.pop_back();
 		}
+	} else if (object->has_attribute(ID::hdlname)) {
+		for (auto const &item : object->get_hdlname_attribute())
+			path.push_back("\\" + item);
+		if (!path.empty()) {
+			path.pop_back();
+		}
 	} else {
 		for (auto const &item : split_tokens(object->get_string_attribute(ID(scopename)), " "))
 			path.push_back("\\" + item);
-
 	}
 	return {path, trailing};
 }

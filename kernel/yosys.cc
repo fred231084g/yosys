@@ -93,6 +93,7 @@ std::set<std::string> yosys_input_files, yosys_output_files;
 bool memhasher_active = false;
 uint32_t memhasher_rng = 123456;
 std::vector<void*> memhasher_store;
+uint32_t Hasher::fudge = 0;
 
 std::string yosys_share_dirname;
 std::string yosys_abc_executable;
@@ -140,7 +141,7 @@ void yosys_banner()
 	log("\n");
 	log(" /----------------------------------------------------------------------------\\\n");
 	log(" |  yosys -- Yosys Open SYnthesis Suite                                       |\n");
-	log(" |  Copyright (C) 2012 - 2024  Claire Xenia Wolf <claire@yosyshq.com>         |\n");
+	log(" |  Copyright (C) 2012 - 2025  Claire Xenia Wolf <claire@yosyshq.com>         |\n");
 	log(" |  Distributed under an ISC-like license, type \"license\" to see terms        |\n");
 	log(" \\----------------------------------------------------------------------------/\n");
 	log(" %s\n", yosys_version_str);

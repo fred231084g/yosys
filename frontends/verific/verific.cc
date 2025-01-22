@@ -407,7 +407,7 @@ static const std::string verific_unescape(const char *value)
 }
 #endif
 
-void VerificImporter::import_attributes(dict<RTLIL::IdString, RTLIL::Const> &attributes, DesignObj *obj, Netlist *nl)
+void VerificImporter::import_attributes(dict<RTLIL::IdString, RTLIL::Const> &attributes, DesignObj *obj, Netlist *nl, int wire_width_hint)
 {
 	if (!obj)
 		return;
@@ -433,10 +433,18 @@ void VerificImporter::import_attributes(dict<RTLIL::IdString, RTLIL::Const> &att
 		auto type_range = nl->GetTypeRange(obj->Name());
 		if (!type_range)
 			return;
-		if (type_range->IsTypeScalar()) {
+		if (nl->IsFromVhdl() && type_range->IsTypeScalar()) {
 			const long long bottom_bound = type_range->GetScalarRangeLeftBound();
 			const long long top_bound = type_range->GetScalarRangeRightBound();
-			const unsigned bit_width = type_range->NumElements();
+			int bit_width = type_range->LeftRangeBound()+1;
+			if (bit_width <= 0) { // VHDL null range
+				if (wire_width_hint >= 0)
+					bit_width = wire_width_hint;
+				else
+					bit_width = 64; //fallback, currently largest integer width that verific will allow (in vhdl2019 mode)
+			} else {
+				if (wire_width_hint >= 0) log_assert(bit_width == wire_width_hint);
+			}
 			RTLIL::Const bottom_const(bottom_bound, bit_width);
 			RTLIL::Const top_const(top_bound, bit_width);
 			if (bottom_bound < 0 || top_bound < 0) {
@@ -611,7 +619,7 @@ RTLIL::SigSpec VerificImporter::operatorInportCase(Instance *inst, const char *p
 	}
 }
 
-RTLIL::SigSpec VerificImporter::operatorOutput(Instance *inst, const pool<Net*, hash_ptr_ops> *any_all_nets)
+RTLIL::SigSpec VerificImporter::operatorOutput(Instance *inst, const pool<Net*> *any_all_nets)
 {
 	RTLIL::SigSpec sig;
 	RTLIL::Wire *dummy_wire = NULL;
@@ -1456,7 +1464,8 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 		log("Importing module %s.\n", RTLIL::id2cstr(module->name));
 	}
 	import_attributes(module->attributes, nl, nl);
-	module->set_string_attribute(ID::hdlname, nl->CellBaseName());
+	if (module->name.isPublic())
+		module->set_string_attribute(ID::hdlname, nl->CellBaseName());
 	module->set_string_attribute(ID(library), nl->Owner()->Owner()->Name());
 #ifdef VERIFIC_VHDL_SUPPORT
 	if (nl->IsFromVhdl()) {
@@ -1499,7 +1508,7 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 			log("  importing port %s.\n", port->Name());
 
 		RTLIL::Wire *wire = module->addWire(RTLIL::escape_id(port->Name()));
-		import_attributes(wire->attributes, port, nl);
+		import_attributes(wire->attributes, port, nl, 1);
 
 		wire->port_id = nl->IndexOf(port) + 1;
 
@@ -1527,11 +1536,11 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 		RTLIL::Wire *wire = module->addWire(RTLIL::escape_id(portbus->Name()), portbus->Size());
 		wire->start_offset = min(portbus->LeftIndex(), portbus->RightIndex());
 		wire->upto = portbus->IsUp();
-		import_attributes(wire->attributes, portbus, nl);
+		import_attributes(wire->attributes, portbus, nl, portbus->Size());
 		SetIter si ;
 		Port *port ;
 		FOREACH_PORT_OF_PORTBUS(portbus, si, port) {
-			import_attributes(wire->attributes, port->GetNet(), nl);
+			import_attributes(wire->attributes, port->GetNet(), nl, portbus->Size());
 			break;
 		}
 		bool portbus_input = portbus->GetDir() == DIR_INOUT || portbus->GetDir() == DIR_IN;
@@ -1568,9 +1577,9 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 
 	module->fixup_ports();
 
-	dict<Net*, char, hash_ptr_ops> init_nets;
-	pool<Net*, hash_ptr_ops> anyconst_nets, anyseq_nets;
-	pool<Net*, hash_ptr_ops> allconst_nets, allseq_nets;
+	dict<Net*, char> init_nets;
+	pool<Net*> anyconst_nets, anyseq_nets;
+	pool<Net*> allconst_nets, allseq_nets;
 	any_all_nets.clear();
 
 	FOREACH_NET_OF_NETLIST(nl, mi, net)
@@ -1693,7 +1702,7 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 			log("  importing net %s as %s.\n", net->Name(), log_id(wire_name));
 
 		RTLIL::Wire *wire = module->addWire(wire_name);
-		import_attributes(wire->attributes, net, nl);
+		import_attributes(wire->attributes, net, nl, 1);
 
 		net_map[net] = wire;
 	}
@@ -1722,10 +1731,10 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 			MapIter mibus;
 			FOREACH_NET_OF_NETBUS(netbus, mibus, net) {
 				if (net)
-					import_attributes(wire->attributes, net, nl);
+					import_attributes(wire->attributes, net, nl, netbus->Size());
 				break;
 			}
-			import_attributes(wire->attributes, netbus, nl);
+			import_attributes(wire->attributes, netbus, nl, netbus->Size());
 
 			RTLIL::Const initval = Const(State::Sx, GetSize(wire));
 			bool initval_valid = false;
@@ -1833,10 +1842,10 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::ma
 		module->connect(net_map_at(net), module->Anyseq(new_verific_id(net)));
 
 #ifdef VERIFIC_SYSTEMVERILOG_SUPPORT
-	pool<Instance*, hash_ptr_ops> sva_asserts;
-	pool<Instance*, hash_ptr_ops> sva_assumes;
-	pool<Instance*, hash_ptr_ops> sva_covers;
-	pool<Instance*, hash_ptr_ops> sva_triggers;
+	pool<Instance*> sva_asserts;
+	pool<Instance*> sva_assumes;
+	pool<Instance*> sva_covers;
+	pool<Instance*> sva_triggers;
 #endif
 
 	pool<RTLIL::Cell*> past_ffs;

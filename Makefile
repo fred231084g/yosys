@@ -2,9 +2,7 @@
 CONFIG := none
 # CONFIG := clang
 # CONFIG := gcc
-# CONFIG := afl-gcc
 # CONFIG := wasi
-# CONFIG := mxe
 # CONFIG := msys2-32
 # CONFIG := msys2-64
 
@@ -155,7 +153,7 @@ ifeq ($(OS), Haiku)
 CXXFLAGS += -D_DEFAULT_SOURCE
 endif
 
-YOSYS_VER := 0.48+0
+YOSYS_VER := 0.49+1
 
 # Note: We arrange for .gitcommit to contain the (short) commit hash in
 # tarballs generated with git-archive(1) using .gitattributes. The git repo
@@ -171,7 +169,7 @@ endif
 OBJS = kernel/version_$(GIT_REV).o
 
 bumpversion:
-	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline aaa5347.. | wc -l`/;" Makefile
+	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 427b5a2.. | wc -l`/;" Makefile
 
 ABCMKARGS = CC="$(CXX)" CXX="$(CXX)" ABC_USE_LIBSTDCXX=1 ABC_USE_NAMESPACE=abc VERBOSE=$(Q)
 
@@ -265,16 +263,6 @@ ifeq ($(DISABLE_ABC_THREADS),1)
 ABCMKARGS += "ABC_USE_NO_PTHREADS=1"
 endif
 
-else ifeq ($(CONFIG),afl-gcc)
-CXX = AFL_QUIET=1 AFL_HARDEN=1 afl-gcc
-CXXFLAGS += -std=$(CXXSTD) $(OPT_LEVEL)
-ABCMKARGS += ARCHFLAGS="-DABC_USE_STDINT_H"
-
-else ifeq ($(CONFIG),cygwin)
-CXX = g++
-CXXFLAGS += -std=gnu++11 $(OPT_LEVEL)
-ABCMKARGS += ARCHFLAGS="-DABC_USE_STDINT_H"
-
 else ifeq ($(CONFIG),wasi)
 ifeq ($(WASI_SDK),)
 CXX = clang++
@@ -302,18 +290,6 @@ LINK_ABC := 1
 DISABLE_ABC_THREADS := 1
 endif
 
-else ifeq ($(CONFIG),mxe)
-PKG_CONFIG = /usr/local/src/mxe/usr/bin/i686-w64-mingw32.static-pkg-config
-CXX = /usr/local/src/mxe/usr/bin/i686-w64-mingw32.static-g++
-CXXFLAGS += -std=$(CXXSTD) $(OPT_LEVEL) -D_POSIX_SOURCE -Wno-attributes
-CXXFLAGS := $(filter-out -fPIC,$(CXXFLAGS))
-LINKFLAGS := $(filter-out -rdynamic,$(LINKFLAGS)) -s
-LIBS := $(filter-out -lrt,$(LIBS))
-ABCMKARGS += ARCHFLAGS="-DWIN32_NO_DLL -DHAVE_STRUCT_TIMESPEC -fpermissive -w"
-# TODO: Try to solve pthread linking issue in more appropriate way
-ABCMKARGS += LIBS="lib/x86/pthreadVC2.lib -s" LINKFLAGS="-Wl,--allow-multiple-definition" ABC_USE_NO_READLINE=1 CC="/usr/local/src/mxe/usr/bin/i686-w64-mingw32.static-gcc"
-EXE = .exe
-
 else ifeq ($(CONFIG),msys2-32)
 CXX = i686-w64-mingw32-g++
 CXXFLAGS += -std=$(CXXSTD) $(OPT_LEVEL) -D_POSIX_SOURCE -DYOSYS_WIN32_UNIX_DIR
@@ -340,7 +316,7 @@ ABCMKARGS += ARCHFLAGS="-DABC_USE_STDINT_H $(ABC_ARCHFLAGS)"
 LTOFLAGS =
 
 else
-$(error Invalid CONFIG setting '$(CONFIG)'. Valid values: clang, gcc, mxe, msys2-32, msys2-64, none)
+$(error Invalid CONFIG setting '$(CONFIG)'. Valid values: clang, gcc, msys2-32, msys2-64, none)
 endif
 
 
@@ -392,9 +368,6 @@ ifeq ($(LINK_TERMCAP),1)
 LIBS += -ltermcap
 ABCMKARGS += "ABC_READLINE_LIBRARIES=-lreadline -ltermcap"
 endif
-ifeq ($(CONFIG),mxe)
-LIBS += -ltermcap
-endif
 else
 ifeq ($(ENABLE_EDITLINE),1)
 CXXFLAGS += -DYOSYS_ENABLE_EDITLINE
@@ -443,15 +416,10 @@ TCL_INCLUDE ?= /usr/include/$(TCL_VERSION)
 TCL_LIBS ?= -l$(TCL_VERSION)
 endif
 
-ifeq ($(CONFIG),mxe)
-CXXFLAGS += -DYOSYS_ENABLE_TCL
-LIBS += -ltcl86 -lwsock32 -lws2_32 -lnetapi32 -lz -luserenv
-else
 CXXFLAGS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --cflags tcl || echo -I$(TCL_INCLUDE)) -DYOSYS_ENABLE_TCL
 LIBS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --libs tcl || echo $(TCL_LIBS))
 ifneq (,$(findstring TCL_WITH_EXTERNAL_TOMMATH,$(CXXFLAGS)))
 LIBS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --libs libtommath || echo)
-endif
 endif
 endif
 
@@ -842,71 +810,101 @@ else
 ABCOPT=""
 endif
 
-# When YOSYS_NOVERIFIC is set as a make variable, also export it to the
-# enviornment, so that `YOSYS_NOVERIFIC=1 make test` _and_
-# `make test YOSYS_NOVERIFIC=1` will run with verific disabled.
-ifeq ($(YOSYS_NOVERIFIC),1)
-export YOSYS_NOVERIFIC
+# Tests that generate .mk with tests/gen-tests-makefile.sh
+MK_TEST_DIRS =
+MK_TEST_DIRS += tests/arch/anlogic
+MK_TEST_DIRS += tests/arch/ecp5
+MK_TEST_DIRS += tests/arch/efinix
+MK_TEST_DIRS += tests/arch/gatemate
+MK_TEST_DIRS += tests/arch/gowin
+MK_TEST_DIRS += tests/arch/ice40
+MK_TEST_DIRS += tests/arch/intel_alm
+MK_TEST_DIRS += tests/arch/machxo2
+MK_TEST_DIRS += tests/arch/microchip
+MK_TEST_DIRS += tests/arch/nanoxplore
+MK_TEST_DIRS += tests/arch/nexus
+MK_TEST_DIRS += tests/arch/quicklogic/pp3
+MK_TEST_DIRS += tests/arch/quicklogic/qlf_k6n10f
+MK_TEST_DIRS += tests/arch/xilinx
+MK_TEST_DIRS += tests/opt
+MK_TEST_DIRS += tests/sat
+MK_TEST_DIRS += tests/sim
+MK_TEST_DIRS += tests/svtypes
+MK_TEST_DIRS += tests/techmap
+MK_TEST_DIRS += tests/various
+ifeq ($(ENABLE_VERIFIC),1)
+ifneq ($(YOSYS_NOVERIFIC),1)
+MK_TEST_DIRS += tests/verific
+endif
+endif
+MK_TEST_DIRS += tests/verilog
+
+# Tests that don't generate .mk
+SH_TEST_DIRS =
+SH_TEST_DIRS += tests/simple
+SH_TEST_DIRS += tests/simple_abc9
+SH_TEST_DIRS += tests/hana
+SH_TEST_DIRS += tests/asicworld
+# SH_TEST_DIRS += tests/realmath
+SH_TEST_DIRS += tests/share
+SH_TEST_DIRS += tests/opt_share
+SH_TEST_DIRS += tests/fsm
+SH_TEST_DIRS += tests/memlib
+SH_TEST_DIRS += tests/bram
+SH_TEST_DIRS += tests/svinterfaces
+SH_TEST_DIRS += tests/xprop
+SH_TEST_DIRS += tests/select
+SH_TEST_DIRS += tests/proc
+SH_TEST_DIRS += tests/blif
+SH_TEST_DIRS += tests/arch
+SH_TEST_DIRS += tests/rpc
+SH_TEST_DIRS += tests/memfile
+SH_TEST_DIRS += tests/fmt
+SH_TEST_DIRS += tests/cxxrtl
+ifeq ($(ENABLE_FUNCTIONAL_TESTS),1)
+SH_TEST_DIRS += tests/functional
 endif
 
-test: $(TARGETS) $(EXTRA_TARGETS)
-ifeq ($(ENABLE_VERIFIC),1)
-ifeq ($(YOSYS_NOVERIFIC),1)
-	@echo
-	@echo "Running tests without verific support due to YOSYS_NOVERIFIC=1"
-	@echo
-else
-	+cd tests/verific && bash run-test.sh $(SEEDOPT)
-endif
-endif
-	+cd tests/simple && bash run-test.sh $(SEEDOPT)
-	+cd tests/simple_abc9 && bash run-test.sh $(SEEDOPT)
-	+cd tests/hana && bash run-test.sh $(SEEDOPT)
-	+cd tests/asicworld && bash run-test.sh $(SEEDOPT)
-	# +cd tests/realmath && bash run-test.sh $(SEEDOPT)
-	+cd tests/share && bash run-test.sh $(SEEDOPT)
-	+cd tests/opt_share && bash run-test.sh $(SEEDOPT)
-	+cd tests/fsm && bash run-test.sh $(SEEDOPT)
-	+cd tests/techmap && bash run-test.sh
-	+cd tests/memories && bash run-test.sh $(ABCOPT) $(SEEDOPT)
-	+cd tests/memlib && bash run-test.sh $(SEEDOPT)
-	+cd tests/bram && bash run-test.sh $(SEEDOPT)
-	+cd tests/various && bash run-test.sh
-	+cd tests/select && bash run-test.sh
-	+cd tests/sat && bash run-test.sh
-	+cd tests/sim && bash run-test.sh
-	+cd tests/svinterfaces && bash run-test.sh $(SEEDOPT)
-	+cd tests/svtypes && bash run-test.sh $(SEEDOPT)
-	+cd tests/proc && bash run-test.sh
-	+cd tests/blif && bash run-test.sh
-	+cd tests/opt && bash run-test.sh
-	+cd tests/aiger && bash run-test.sh $(ABCOPT)
-	+cd tests/arch && bash run-test.sh
-	+cd tests/arch/ice40 && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/xilinx && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/ecp5 && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/machxo2 && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/efinix && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/anlogic && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/gowin && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/intel_alm && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/nanoxplore && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/nexus && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/quicklogic/pp3 && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/quicklogic/qlf_k6n10f && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/gatemate && bash run-test.sh $(SEEDOPT)
-	+cd tests/arch/microchip && bash run-test.sh $(SEEDOPT)
-	+cd tests/rpc && bash run-test.sh
-	+cd tests/memfile && bash run-test.sh
-	+cd tests/verilog && bash run-test.sh
-	+cd tests/xprop && bash run-test.sh $(SEEDOPT)
-	+cd tests/fmt && bash run-test.sh
-	+cd tests/cxxrtl && bash run-test.sh
-ifeq ($(ENABLE_FUNCTIONAL_TESTS),1)
-	+cd tests/functional && bash run-test.sh
-endif
+# Tests that don't generate .mk and need special args
+SH_ABC_TEST_DIRS =
+SH_ABC_TEST_DIRS += tests/memories
+SH_ABC_TEST_DIRS += tests/aiger
+SH_ABC_TEST_DIRS += tests/alumacc
+
+# seed-tests/ is a dummy string, not a directory
+.PHONY: seed-tests
+seed-tests: $(SH_TEST_DIRS:%=seed-tests/%)
+.PHONY: seed-tests/%
+seed-tests/%: %/run-test.sh $(TARGETS) $(EXTRA_TARGETS)
+	+cd $* && bash run-test.sh $(SEEDOPT)
+	+@echo "...passed tests in $*"
+
+# abcopt-tests/ is a dummy string, not a directory
+.PHONY: abcopt-tests
+abcopt-tests: $(SH_ABC_TEST_DIRS:%=abcopt-tests/%)
+abcopt-tests/%: %/run-test.sh $(TARGETS) $(EXTRA_TARGETS)
+	+cd $* && bash run-test.sh $(ABCOPT) $(SEEDOPT)
+	+@echo "...passed tests in $*"
+
+# makefile-tests/ is a dummy string, not a directory
+.PHONY: makefile-tests
+makefile-tests: $(MK_TEST_DIRS:%=makefile-tests/%)
+# this target actually emits .mk files
+%.mk:
+	+cd $(dir $*) && bash run-test.sh
+# this one spawns submake on each
+makefile-tests/%: %/run-test.mk $(TARGETS) $(EXTRA_TARGETS)
+	$(MAKE) -C $* -f run-test.mk
+	+@echo "...passed tests in $*"
+
+test: makefile-tests abcopt-tests seed-tests
 	@echo ""
 	@echo "  Passed \"make test\"."
+ifeq ($(ENABLE_VERIFIC),1)
+ifeq ($(YOSYS_NOVERIFIC),1)
+	@echo "  Ran tests without verific support due to YOSYS_NOVERIFIC=1."
+endif
+endif
 	@echo ""
 
 VALGRIND ?= valgrind --error-exitcode=1 --leak-check=full --show-reachable=yes --errors-for-leak-kinds=all
@@ -1101,19 +1099,6 @@ vcxsrc: $(GENFILES) $(EXTRA_TARGETS)
 	zip -r yosys-win32-vcxsrc-$(YOSYS_VER).zip yosys-win32-vcxsrc-$(YOSYS_VER)/
 	rm -f srcfiles.txt kernel/version.cc
 
-ifeq ($(CONFIG),mxe)
-mxebin: $(TARGETS) $(EXTRA_TARGETS)
-	rm -rf yosys-win32-mxebin-$(YOSYS_VER){,.zip}
-	mkdir -p yosys-win32-mxebin-$(YOSYS_VER)
-	cp -r $(PROGRAM_PREFIX)yosys.exe share/ yosys-win32-mxebin-$(YOSYS_VER)/
-ifeq ($(ENABLE_ABC),1)
-	cp -r $(PROGRAM_PREFIX)yosys-abc.exe abc/lib/x86/pthreadVC2.dll yosys-win32-mxebin-$(YOSYS_VER)/
-endif
-	echo -en 'This is Yosys $(YOSYS_VER) for Win32.\r\n' > yosys-win32-mxebin-$(YOSYS_VER)/readme.txt
-	echo -en 'Documentation at https://yosyshq.net/yosys/.\r\n' >> yosys-win32-mxebin-$(YOSYS_VER)/readme.txt
-	zip -r yosys-win32-mxebin-$(YOSYS_VER).zip yosys-win32-mxebin-$(YOSYS_VER)/
-endif
-
 config-clean: clean
 	rm -f Makefile.conf
 
@@ -1129,9 +1114,6 @@ config-gcc-static: clean
 	echo 'ENABLE_READLINE := 0' >> Makefile.conf
 	echo 'ENABLE_TCL := 0' >> Makefile.conf
 
-config-afl-gcc: clean
-	echo 'CONFIG := afl-gcc' > Makefile.conf
-
 config-wasi: clean
 	echo 'CONFIG := wasi' > Makefile.conf
 	echo 'ENABLE_TCL := 0' >> Makefile.conf
@@ -1140,10 +1122,6 @@ config-wasi: clean
 	echo 'ENABLE_READLINE := 0' >> Makefile.conf
 	echo 'ENABLE_ZLIB := 0' >> Makefile.conf
 
-config-mxe: clean
-	echo 'CONFIG := mxe' > Makefile.conf
-	echo 'ENABLE_PLUGINS := 0' >> Makefile.conf
-
 config-msys2-32: clean
 	echo 'CONFIG := msys2-32' > Makefile.conf
 	echo "PREFIX := $(MINGW_PREFIX)" >> Makefile.conf
@@ -1151,9 +1129,6 @@ config-msys2-32: clean
 config-msys2-64: clean
 	echo 'CONFIG := msys2-64' > Makefile.conf
 	echo "PREFIX := $(MINGW_PREFIX)" >> Makefile.conf
-
-config-cygwin: clean
-	echo 'CONFIG := cygwin' > Makefile.conf
 
 config-gcov: clean
 	echo 'CONFIG := gcc' > Makefile.conf
@@ -1183,5 +1158,5 @@ echo-cxx:
 -include kernel/*.d
 -include techlibs/*/*.d
 
-.PHONY: all top-all abc test install install-abc docs clean mrproper qtcreator coverage vcxsrc mxebin
-.PHONY: config-clean config-clang config-gcc config-gcc-static config-afl-gcc config-gprof config-sudo
+.PHONY: all top-all abc test install install-abc docs clean mrproper qtcreator coverage vcxsrc
+.PHONY: config-clean config-clang config-gcc config-gcc-static config-gprof config-sudo

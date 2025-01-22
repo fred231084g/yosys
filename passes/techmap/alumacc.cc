@@ -111,7 +111,7 @@ struct AlumaccWorker
 
 	dict<RTLIL::SigBit, int> bit_users;
 	dict<RTLIL::SigSpec, maccnode_t*> sig_macc;
-	dict<RTLIL::SigSig, pool<alunode_t*, hash_ptr_ops>> sig_alu;
+	dict<RTLIL::SigSig, pool<alunode_t*>> sig_alu;
 	int macc_counter, alu_counter;
 
 	AlumaccWorker(RTLIL::Module *module) : module(module), sigmap(module)
@@ -226,7 +226,7 @@ struct AlumaccWorker
 	{
 		while (1)
 		{
-			pool<maccnode_t*, hash_ptr_ops> delete_nodes;
+			pool<maccnode_t*> delete_nodes;
 
 			for (auto &it : sig_macc)
 			{
@@ -278,12 +278,12 @@ struct AlumaccWorker
 
 	void macc_to_alu()
 	{
-		pool<maccnode_t*, hash_ptr_ops> delete_nodes;
+		pool<maccnode_t*> delete_nodes;
 
 		for (auto &it : sig_macc)
 		{
 			auto n = it.second;
-			RTLIL::SigSpec A, B, C = n->macc.bit_ports;
+			RTLIL::SigSpec A, B, C;
 			bool a_signed = false, b_signed = false;
 			bool subtract_b = false;
 			alunode_t *alunode;
