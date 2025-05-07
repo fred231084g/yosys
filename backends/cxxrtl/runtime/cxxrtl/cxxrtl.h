@@ -1769,7 +1769,7 @@ value<BitsY> shr_uu(const value<BitsA> &a, const value<BitsB> &b) {
 template<size_t BitsY, size_t BitsA, size_t BitsB>
 CXXRTL_ALWAYS_INLINE
 value<BitsY> shr_su(const value<BitsA> &a, const value<BitsB> &b) {
-	return a.shr(b).template scast<BitsY>();
+	return a.template scast<BitsY>().shr(b);
 }
 
 template<size_t BitsY, size_t BitsA, size_t BitsB>
@@ -2010,7 +2010,7 @@ std::pair<value<BitsY>, value<BitsY>> divmod_uu(const value<BitsA> &a, const val
 	value<Bits> quotient;
 	value<Bits> remainder;
 	value<Bits> dividend = a.template zext<Bits>();
-	value<Bits> divisor = b.template zext<Bits>();
+	value<Bits> divisor  = b.template trunc<BitsB>().template zext<Bits>();
 	std::tie(quotient, remainder) = dividend.udivmod(divisor);
 	return {quotient.template trunc<BitsY>(), remainder.template trunc<BitsY>()};
 }

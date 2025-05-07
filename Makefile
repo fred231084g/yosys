@@ -160,7 +160,7 @@ ifeq ($(OS), Haiku)
 CXXFLAGS += -D_DEFAULT_SOURCE
 endif
 
-YOSYS_VER := 0.52+63
+YOSYS_VER := 0.53+3
 YOSYS_MAJOR := $(shell echo $(YOSYS_VER) | cut -d'.' -f1)
 YOSYS_MINOR := $(shell echo $(YOSYS_VER) | cut -d'.' -f2 | cut -d'+' -f1)
 YOSYS_COMMIT := $(shell echo $(YOSYS_VER) | cut -d'+' -f2)
@@ -183,7 +183,7 @@ endif
 OBJS = kernel/version_$(GIT_REV).o
 
 bumpversion:
-	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline fee39a3.. | wc -l`/;" Makefile
+	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 53c22ab.. | wc -l`/;" Makefile
 
 ABCMKARGS = CC="$(CXX)" CXX="$(CXX)" ABC_USE_LIBSTDCXX=1 ABC_USE_NAMESPACE=abc VERBOSE=$(Q)
 
@@ -394,6 +394,10 @@ endif
 
 ifeq ($(DISABLE_ABC_THREADS),1)
 ABCMKARGS += "ABC_USE_NO_PTHREADS=1"
+endif
+
+ifeq ($(LINK_ABC),1)
+ABCMKARGS += "ABC_USE_PIC=1"
 endif
 
 ifeq ($(DISABLE_SPAWN),1)
@@ -787,7 +791,7 @@ $(PROGRAM_PREFIX)yosys-config: misc/yosys-config.in $(YOSYS_SRC)/Makefile
 .PHONY: check-git-abc
 
 check-git-abc:
-	@if [ ! -d "$(YOSYS_SRC)/abc" ]; then \
+	@if [ ! -d "$(YOSYS_SRC)/abc" ] && git -C "$(YOSYS_SRC)" status >/dev/null 2>&1; then \
 		echo "Error: The 'abc' directory does not exist."; \
 		echo "Initialize the submodule: Run 'git submodule update --init' to set up 'abc' as a submodule."; \
 		exit 1; \
@@ -812,6 +816,12 @@ check-git-abc:
 		echo "2. Remove the existing 'abc' directory: Delete the 'abc' directory and all its contents."; \
 		echo "3. Initialize the submodule: Run 'git submodule update --init' to set up 'abc' as a submodule."; \
 		echo "4. Reapply your changes: Move your saved changes back to the 'abc' directory, if necessary."; \
+		exit 1; \
+	elif ! git -C "$(YOSYS_SRC)" status >/dev/null 2>&1; then \
+		echo "$(realpath $(YOSYS_SRC)) is not configured as a git repository, and 'abc' folder is missing."; \
+		echo "If you already have ABC, set 'ABCEXTERNAL' make variable to point to ABC executable."; \
+		echo "Otherwise, download release archive 'yosys.tar.gz' from https://github.com/YosysHQ/yosys/releases."; \
+		echo "    ('Source code' archive does not contain submodules.)"; \
 		exit 1; \
 	else \
 		echo "Initialize the submodule: Run 'git submodule update --init' to set up 'abc' as a submodule."; \

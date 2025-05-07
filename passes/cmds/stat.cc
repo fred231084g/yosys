@@ -40,7 +40,7 @@ struct statdata_t
 			X(num_ports) X(num_port_bits) X(num_memories) X(num_memory_bits) X(num_cells) \
 			X(num_processes)
 
-	#define STAT_NUMERIC_MEMBERS STAT_INT_MEMBERS X(area)
+	#define STAT_NUMERIC_MEMBERS STAT_INT_MEMBERS X(area) X(sequential_area)
 
 	#define X(_name) unsigned int _name;
 	STAT_INT_MEMBERS
@@ -350,8 +350,6 @@ void read_liberty_cellarea(dict<IdString, cell_area_t> &cell_area, string libert
 {
 	std::istream* f = uncompressed(liberty_file.c_str());
 	yosys_input_files.insert(liberty_file);
-	if (f->fail())
-		log_cmd_error("Can't open liberty file `%s': %s\n", liberty_file.c_str(), strerror(errno));
 	LibertyParser libparser(*f, liberty_file);
 	delete f;
 
