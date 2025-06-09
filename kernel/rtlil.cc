@@ -380,6 +380,49 @@ int RTLIL::Const::as_int(bool is_signed) const
 	return ret;
 }
 
+bool RTLIL::Const::convertible_to_int(bool is_signed) const
+{
+	auto size = get_min_size(is_signed);
+
+	if (size <= 0)
+		return false;
+
+	// If it fits in 31 bits it is definitely convertible
+	if (size <= 31)
+		return true;
+
+	// If it fits in 32 bits, it is convertible if signed or if unsigned and the
+	// leading bit is not 1
+	if (size == 32) {
+		if (is_signed)
+			return true;
+		return get_bits().at(31) != State::S1;
+	}
+
+	return false;
+}
+
+std::optional<int> RTLIL::Const::try_as_int(bool is_signed) const
+{
+	if (!convertible_to_int(is_signed))
+		return std::nullopt;
+	return as_int(is_signed);
+}
+
+int RTLIL::Const::as_int_saturating(bool is_signed) const
+{
+	if (!convertible_to_int(is_signed)) {
+		if (!is_signed)
+			return std::numeric_limits<int>::max();
+
+		const auto min_size = get_min_size(is_signed);
+		log_assert(min_size > 0);
+		const auto neg = get_bits().at(min_size - 1);
+		return neg ? std::numeric_limits<int>::min() : std::numeric_limits<int>::max();
+	}
+	return as_int(is_signed);
+}
+
 int RTLIL::Const::get_min_size(bool is_signed) const
 {
 	if (empty()) return 0;
@@ -412,18 +455,7 @@ void RTLIL::Const::compress(bool is_signed)
 
 std::optional<int> RTLIL::Const::as_int_compress(bool is_signed) const
 {
-	auto size = get_min_size(is_signed);
-	if(size == 0 || size > 32)
-		return std::nullopt;
-
-	int32_t ret = 0;
-	for (auto i = 0; i < size && i < 32; i++)
-		if ((*this)[i] == State::S1)
-			ret |= 1 << i;
-	if (is_signed && (*this)[size-1] == State::S1)
-		for (auto i = size; i < 32; i++)
-			ret |= 1 << i;
-	return ret;
+	return try_as_int(is_signed);
 }
 
 std::string RTLIL::Const::as_string(const char* any) const
@@ -2377,7 +2409,14 @@ void RTLIL::Module::check()
 			// assertion check below to make sure that there are no
 			// cases where a cell has a blackbox attribute since
 			// that is deprecated
+			#ifdef __GNUC__
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+			#endif
 			log_assert(!it.second->get_blackbox_attribute());
+			#ifdef __GNUC__
+			#pragma GCC diagnostic pop
+			#endif
 		}
 	}
 
@@ -5460,6 +5499,38 @@ int RTLIL::SigSpec::as_int(bool is_signed) const
 	if (width_)
 		return RTLIL::Const(chunks_[0].data).as_int(is_signed);
 	return 0;
+}
+
+bool RTLIL::SigSpec::convertible_to_int(bool is_signed) const
+{
+	cover("kernel.rtlil.sigspec.convertible_to_int");
+
+	pack();
+	if (!is_fully_const())
+		return false;
+
+	return RTLIL::Const(chunks_[0].data).convertible_to_int(is_signed);
+}
+
+std::optional<int> RTLIL::SigSpec::try_as_int(bool is_signed) const
+{
+	cover("kernel.rtlil.sigspec.try_as_int");
+
+	pack();
+	if (!is_fully_const())
+		return std::nullopt;
+
+	return RTLIL::Const(chunks_[0].data).try_as_int(is_signed);
+}
+
+int RTLIL::SigSpec::as_int_saturating(bool is_signed) const
+{
+	cover("kernel.rtlil.sigspec.try_as_int");
+
+	pack();
+	log_assert(is_fully_const() && GetSize(chunks_) <= 1);
+	log_assert(!empty());
+	return RTLIL::Const(chunks_[0].data).as_int_saturating(is_signed);
 }
 
 std::string RTLIL::SigSpec::as_string() const

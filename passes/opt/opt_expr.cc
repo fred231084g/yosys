@@ -487,7 +487,7 @@ void replace_const_cells(RTLIL::Design *design, RTLIL::Module *module, bool cons
 
 		handle_clkpol_celltype_swap(cell, "$_DLATCHSR_N??_", "$_DLATCHSR_P??_", ID::E, assign_map, invert_map);
 		handle_clkpol_celltype_swap(cell, "$_DLATCHSR_?N?_", "$_DLATCHSR_?P?_", ID::S, assign_map, invert_map);
-		handle_clkpol_celltype_swap(cell, "$_DLATCHSR_??N_", "$_DLATCHSR_??P_", ID::R, assign_map, invert_map);	
+		handle_clkpol_celltype_swap(cell, "$_DLATCHSR_??N_", "$_DLATCHSR_??P_", ID::R, assign_map, invert_map);
 	}
 
 	TopoSort<RTLIL::Cell*, RTLIL::IdString::compare_ptr_by_name<RTLIL::Cell>> cells;
@@ -1307,7 +1307,12 @@ skip_fine_alu:
 		if (cell->type.in(ID($shl), ID($shr), ID($sshl), ID($sshr), ID($shift), ID($shiftx)) && (keepdc ? assign_map(cell->getPort(ID::B)).is_fully_def() : assign_map(cell->getPort(ID::B)).is_fully_const()))
 		{
 			bool sign_ext = cell->type == ID($sshr) && cell->getParam(ID::A_SIGNED).as_bool();
-			int shift_bits = assign_map(cell->getPort(ID::B)).as_int(cell->type.in(ID($shift), ID($shiftx)) && cell->getParam(ID::B_SIGNED).as_bool());
+			RTLIL::SigSpec sig_b = assign_map(cell->getPort(ID::B));
+			const bool b_sign_ext = cell->type.in(ID($shift), ID($shiftx)) && cell->getParam(ID::B_SIGNED).as_bool();
+			// We saturate the value to prevent overflow, but note that this could
+			// cause incorrect opimization in the impractical case that A is 2^32 bits
+			// wide
+			int shift_bits = sig_b.as_int_saturating(b_sign_ext);
 
 			if (cell->type.in(ID($shl), ID($sshl)))
 				shift_bits *= -1;
@@ -1715,22 +1720,22 @@ skip_identity:
 
 			if (onehot) {
 				if (bit_idx == 1) {
-					log_debug("Replacing pow cell `%s' in module `%s' with left-shift\n", 
+					log_debug("Replacing pow cell `%s' in module `%s' with left-shift\n",
 							cell->name.c_str(), module->name.c_str());
 					cell->type = ID($shl);
 					cell->parameters[ID::A_WIDTH] = 1;
 					cell->setPort(ID::A, Const(State::S1, 1));
 				}
 				else {
-					log_debug("Replacing pow cell `%s' in module `%s' with multiply and left-shift\n", 
+					log_debug("Replacing pow cell `%s' in module `%s' with multiply and left-shift\n",
 							cell->name.c_str(), module->name.c_str());
 					cell->type = ID($mul);
 					cell->parameters[ID::A_SIGNED] = 0;
 					cell->setPort(ID::A, Const(bit_idx, cell->parameters[ID::A_WIDTH].as_int()));
-					
+
 					SigSpec y_wire = module->addWire(NEW_ID, y_size);
 					cell->setPort(ID::Y, y_wire);
-					
+
 					module->addShl(NEW_ID, Const(State::S1, 1), y_wire, sig_y);
 				}
 				did_something = true;
